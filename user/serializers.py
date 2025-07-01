@@ -26,33 +26,39 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class CustomTokenSerializer(serializers.Serializer):
-    email = serializers.EmailField(label=_("Email"), write_only=True)
+    # Оба поля: чтобы и тесты, и обычные пользователи могли логиниться
+    email = serializers.EmailField(required=False)
+    username = serializers.CharField(required=False)
     password = serializers.CharField(
         label=_("Password"),
         style={"input_type": "password"},
         trim_whitespace=False,
-        write_only=True,
+        write_only=True
     )
     token = serializers.CharField(label=_("Token"), read_only=True)
 
     def validate(self, attrs):
-        email = attrs.get("email")
+        email = attrs.get("email") or attrs.get("username")
         password = attrs.get("password")
 
-        if email and password:
-            user = authenticate(
-                request=self.context.get("request"),
-                email=email,
-                password=password,
+        if not email or not password:
+            raise serializers.ValidationError(
+                _("Must include either 'email' or 'username' and 'password'"),
+                code="authorization"
             )
 
-            if not user:
-                msg = _("Unable to authenticate with provided credentials")
-                raise serializers.ValidationError(msg, code="authorization")
+        # логиним по email, даже если он пришёл как "username"
+        user = authenticate(
+            request=self.context.get("request"),
+            email=email,
+            password=password
+        )
 
-        else:
-            msg = _("Must include 'email' and 'password' fields")
-            raise serializers.ValidationError(msg, code="authorization")
+        if not user:
+            raise serializers.ValidationError(
+                _("Unable to authenticate with provided credentials"),
+                code="authorization"
+            )
 
         attrs["user"] = user
         return attrs
